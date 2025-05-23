@@ -9,6 +9,7 @@ import GreenwashingAnalyzer from '@/components/GreenwashingAnalyzer';
 import CommunicationOptimizer from '@/components/CommunicationOptimizer';
 import AIAgentDashboard from '@/components/AIAgentDashboard';
 import LegalGuidelines from '@/components/LegalGuidelines';
+import LLMConfig from '@/components/LLMConfig';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState('upload');
@@ -57,9 +58,12 @@ const Index = () => {
                 <p className="text-sm text-gray-600">P&G Marketing Compliance Suite</p>
               </div>
             </div>
-            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-              EU & US Compliant
-            </Badge>
+            <div className="flex items-center space-x-3">
+              <LLMConfig />
+              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                EU & US Compliant
+              </Badge>
+            </div>
           </div>
         </div>
       </header>
@@ -75,23 +79,6 @@ const Index = () => {
             optimize communications, and create authentic environmental messaging that complies with 
             European and US regulations.
           </p>
-          
-          {/* Feature Cards */}
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-            {features.map((feature, index) => (
-              <Card key={index} className="bg-white/60 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
-                <CardHeader className="text-center">
-                  <feature.icon className="w-10 h-10 mx-auto mb-3 text-green-600" />
-                  <CardTitle className="text-lg">{feature.title}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription className="text-sm">
-                    {feature.description}
-                  </CardDescription>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
         </div>
       </section>
 
@@ -143,6 +130,31 @@ const Index = () => {
                 <LegalGuidelines />
               )}
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Feature Cards - Moved to bottom */}
+      <section className="px-4 pb-12">
+        <div className="container mx-auto">
+          <div className="text-center mb-8">
+            <h3 className="text-2xl font-bold text-gray-900 mb-2">Platform Features</h3>
+            <p className="text-gray-600">Comprehensive tools for compliant marketing communications</p>
+          </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {features.map((feature, index) => (
+              <Card key={index} className="bg-white/60 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
+                <CardHeader className="text-center">
+                  <feature.icon className="w-10 h-10 mx-auto mb-3 text-green-600" />
+                  <CardTitle className="text-lg">{feature.title}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <CardDescription className="text-sm">
+                    {feature.description}
+                  </CardDescription>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </div>
       </section>
