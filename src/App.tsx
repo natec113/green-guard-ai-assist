@@ -1,16 +1,18 @@
+
 import React from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import Index from "@/pages/index";
-import NotFound from "@/pages/not-found";
-import { QueryClient } from "@tanstack/react-query";
-
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import DocumentProcessorPage from "@/pages/DocumentProcessor";
+import Index from "@/pages/Index"; // Fixed casing
+import NotFound from "@/pages/NotFound"; // Fixed casing
 
 function App() {
+  const queryClient = new QueryClient();
+
   return (
-    <QueryClient>
+    <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
         <BrowserRouter>
@@ -21,7 +23,7 @@ function App() {
           </Routes>
         </BrowserRouter>
       </TooltipProvider>
-    </QueryClient>
+    </QueryClientProvider>
   );
 }
 
