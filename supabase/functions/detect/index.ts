@@ -42,16 +42,23 @@ serve(async (req) => {
     
     let detection;
     
-    try {
-      // 🌱 Try to analyze with Groq using RAG context
-      console.log('🌱 Sending to Groq for RAG analysis...');
-      detection = await analyzeWithRAG(text, pgPassages);
-      console.log('✅ Analysis complete');
-    } catch (groqError) {
-      console.error('⚠️ Groq API error:', groqError);
-      console.log('🌱 Using local fallback analysis instead');
-      // 🌱 If Groq fails, use simple local analysis
+    // Check if Groq API key is available
+    const groqApiKey = Deno.env.get('GROQ_API_KEY');
+    if (!groqApiKey) {
+      console.log('⚠️ No Groq API key found, using local fallback analysis');
       detection = localAnalysis(text, pgPassages);
+    } else {
+      try {
+        // 🌱 Try to analyze with Groq using RAG context
+        console.log('🌱 Sending to Groq for RAG analysis...');
+        detection = await analyzeWithRAG(text, pgPassages, groqApiKey);
+        console.log('✅ Groq analysis complete');
+      } catch (groqError) {
+        console.error('⚠️ Groq API error:', groqError);
+        console.log('🌱 Using local fallback analysis instead');
+        // 🌱 If Groq fails, use simple local analysis
+        detection = localAnalysis(text, pgPassages);
+      }
     }
     
     // 🌱 Log the detection (without user_id)
@@ -149,7 +156,7 @@ async function searchPGAnnualReport(supabase: any, query: string) {
   }
 }
 
-async function analyzeWithRAG(text: string, pgPassages: any[]) {
+async function analyzeWithRAG(text: string, pgPassages: any[], groqApiKey: string) {
   let pgContext = "No P&G Annual Report context available.";
   
   if (pgPassages && pgPassages.length > 0) {
@@ -194,14 +201,8 @@ Respond in JSON format:
   "pg_references": ["specific P&G initiatives/metrics that provide context"]
 }`;
 
-  // Check if Groq API key is available
-  const groqApiKey = Deno.env.get('GROQ_API_KEY');
-  if (!groqApiKey) {
-    throw new Error("Missing Groq API key");
-  }
-
   try {
-    console.log('🌱 Calling Groq API...');
+    console.log('🌱 Calling Groq API with API key...');
     
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',

@@ -7,7 +7,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, Shield, Eye, TrendingUp, FileText, AlertCircle, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 
 interface GreenwashingAnalyzerProps {
   content: string;
@@ -32,7 +31,7 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
     try {
       console.log('Starting RAG analysis with content length:', content.length);
       
-      // Use anon key directly instead of relying on session
+      // Use anon key directly for the API call
       const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZkYWx0Y3ZwbmNkZm9ja3Rub2tuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMDIwOTgsImV4cCI6MjA2MzU3ODA5OH0.h61gcLd3J06ccu4lumZBH-kQCUsl0c8v9mu3pzrfdfE";
       
       const response = await fetch('https://fdaltcvpncdfocktnokn.supabase.co/functions/v1/detect', {
@@ -95,9 +94,6 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
         description: errorMessage,
         variant: "destructive",
       });
-      
-      // 🌱 Fallback to local analysis
-      performLocalAnalysis();
     } finally {
       setIsAnalyzing(false);
     }
@@ -110,40 +106,6 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
       case 'low': return 20;
       default: return 0;
     }
-  };
-
-  const performLocalAnalysis = () => {
-    // 🌱 Fallback local analysis logic
-    const greenwashingWords = [
-      'eco-friendly', 'natural', 'green', 'sustainable', 'pure', 'clean',
-      'biodegradable', 'organic', 'carbon-neutral', 'environmentally safe'
-    ];
-    
-    const lowerContent = content.toLowerCase();
-    const foundPhrases = greenwashingWords
-      .filter(word => lowerContent.includes(word.toLowerCase()))
-      .map(word => ({
-        phrase: word,
-        risk_level: 'medium',
-        justification: 'Generic environmental claim without specific evidence',
-        suggestion: 'Replace with specific, measurable benefits'
-      }));
-    
-    const riskLevel = foundPhrases.length > 5 ? 'high' : 
-                     foundPhrases.length > 2 ? 'medium' : 'low';
-    
-    setAnalysis({
-      riskLevel,
-      riskScore: getRiskScore(riskLevel),
-      flaggedWords: foundPhrases.map(p => p.phrase),
-      flaggedPhrases: foundPhrases,
-      totalWords: content.split(' ').length,
-      flaggedCount: foundPhrases.length,
-      compliance: { eu: riskLevel !== 'high', us: riskLevel !== 'high' },
-      recommendations: generateRecommendations(foundPhrases, riskLevel),
-      detailedFindings: foundPhrases,
-      passages: []
-    });
   };
 
   const generateRecommendations = (flaggedPhrases: any[], riskLevel: string) => {
