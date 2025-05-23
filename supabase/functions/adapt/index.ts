@@ -55,19 +55,48 @@ Respond in JSON format:
   "improvement_score": 85
 }`;
 
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${Deno.env.get('GROQ_API_KEY')}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'llama-3.1-70b-versatile',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.3,
-    }),
-  });
+  const groqApiKey = Deno.env.get('GROQ_API_KEY');
+  
+  if (!groqApiKey) {
+    return {
+      before: text,
+      after: text,
+      changes: [],
+      improvement_score: 0,
+      error: "No Groq API key available"
+    };
+  }
 
-  const data = await response.json();
-  return JSON.parse(data.choices[0].message.content);
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${groqApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'llama3-70b-8192', // Updated to a current model
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Groq API error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    return JSON.parse(data.choices[0].message.content);
+  } catch (error) {
+    console.error('Error in rewriteWithGroq:', error);
+    
+    return {
+      before: text,
+      after: text,
+      changes: [],
+      improvement_score: 0,
+      error: error.message
+    };
+  }
 }

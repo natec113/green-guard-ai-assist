@@ -211,7 +211,7 @@ Respond in JSON format:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'llama-3.1-70b-versatile',
+        model: 'llama3-70b-8192', // Updated to a current model
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.1,
       }),
@@ -251,14 +251,15 @@ Respond in JSON format:
   }
 }
 
-// 🌱 Simple local fallback analysis if AI services fail
+// 🌱 Enhanced local fallback analysis if AI services fail
 function localAnalysis(text: string, pgPassages: any[]) {
   console.log('🌱 Running local fallback analysis');
   
   // Extract potential green claims from text
   const greenwashingTerms = [
     'eco-friendly', 'natural', 'green', 'sustainable', 'organic', 
-    'biodegradable', 'clean', 'environmentally friendly', 'carbon neutral'
+    'biodegradable', 'clean', 'environmentally friendly', 'carbon neutral',
+    'environmentally safe', 'renewable', 'recycled', 'non-toxic'
   ];
   
   // Extract phrases from text containing green terms
@@ -269,9 +270,13 @@ function localAnalysis(text: string, pgPassages: any[]) {
     if (lowerText.includes(term)) {
       // Get the surrounding context (simple approach)
       const index = lowerText.indexOf(term);
-      const start = Math.max(0, index - 30);
-      const end = Math.min(text.length, index + term.length + 30);
-      extractedPhrases.push(text.substring(start, end));
+      const start = Math.max(0, index - 50);
+      const end = Math.min(text.length, index + term.length + 50);
+      extractedPhrases.push({
+        term: term,
+        context: text.substring(start, end),
+        fullPhrase: text.substring(start, end)
+      });
     }
   }
   
@@ -279,31 +284,72 @@ function localAnalysis(text: string, pgPassages: any[]) {
   const flaggedPhrases = [];
   const supportedClaims = [];
   
-  for (const phrase of extractedPhrases) {
-    let isSupported = false;
-    let supportingEvidence = '';
-    
-    // Check if phrase appears in any PG passage
+  // Helper function to check if a phrase is supported by PG content
+  function isPhraseSupported(phrase, pgPassages) {
     for (const passage of pgPassages) {
-      if (passage.content.toLowerCase().includes(phrase.toLowerCase())) {
-        isSupported = true;
-        supportingEvidence = passage.content.substring(0, 150) + '...';
-        break;
+      // Convert both to lowercase for case-insensitive comparison
+      if (passage.content.toLowerCase().includes(phrase.term.toLowerCase())) {
+        return {
+          supported: true,
+          evidence: passage.content.substring(0, 150) + '...'
+        };
       }
     }
+    return { supported: false };
+  }
+  
+  for (const phrase of extractedPhrases) {
+    const supportCheck = isPhraseSupported(phrase, pgPassages);
     
-    if (isSupported) {
+    if (supportCheck.supported) {
       supportedClaims.push({
-        phrase: phrase,
-        supporting_evidence: supportingEvidence
+        phrase: phrase.fullPhrase,
+        supporting_evidence: supportCheck.evidence
       });
     } else {
       flaggedPhrases.push({
-        phrase: phrase,
+        phrase: phrase.fullPhrase,
         risk_level: "medium",
         justification: "This environmental claim could not be validated against P&G's documented practices",
         suggestion: "Provide specific evidence or metrics to support this claim"
       });
+    }
+  }
+  
+  // Check for exact matches of phrases in the provided text against PG content
+  const paragraphs = text.split(/\n+/).filter(p => p.trim().length > 15);
+  
+  for (const paragraph of paragraphs) {
+    let isSupported = false;
+    let supportingEvidence = '';
+    
+    // Only check paragraphs that aren't already flagged or supported
+    const alreadyProcessed = [...flaggedPhrases, ...supportedClaims].some(
+      item => item.phrase.includes(paragraph) || paragraph.includes(item.phrase)
+    );
+    
+    if (!alreadyProcessed) {
+      for (const passage of pgPassages) {
+        // Check if significant parts of the paragraph appear in the passage
+        const words = paragraph.toLowerCase().split(/\s+/).filter(w => w.length > 4);
+        const matchingWords = words.filter(word => 
+          passage.content.toLowerCase().includes(word.toLowerCase())
+        );
+        
+        // If most key words match, consider it supported
+        if (matchingWords.length > words.length * 0.7) {
+          isSupported = true;
+          supportingEvidence = passage.content.substring(0, 150) + '...';
+          break;
+        }
+      }
+      
+      if (isSupported) {
+        supportedClaims.push({
+          phrase: paragraph,
+          supporting_evidence: supportingEvidence
+        });
+      }
     }
   }
   
