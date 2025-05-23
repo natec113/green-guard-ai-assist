@@ -47,7 +47,9 @@ serve(async (req) => {
           source: 'official_report', 
           year: 2024, 
           filename: filename,
-          processed_at: new Date().toISOString()
+          processed_at: new Date().toISOString(),
+          content_length: content.length,
+          content_hash: await hashText(content.substring(0, 1000)) // Hash first 1000 chars as fingerprint
         },
         public_read: true
       })
@@ -60,32 +62,36 @@ serve(async (req) => {
 
     console.log('🌱 Document inserted with ID:', doc.id);
 
-    // 🌱 Create chunks from the content
-    const chunks = chunkText(content, 800); // Larger chunks for better context
+    // 🌱 Create optimized chunks from the content
+    const chunks = await chunkTextAdvanced(content, 1500); // Larger chunks for better context
     let chunksInserted = 0;
 
-    for (const [index, chunk] of chunks.entries()) {
-      const { error: chunkError } = await supabase
-        .from('document_chunks')
-        .insert({
-          document_id: doc.id,
-          content: chunk,
-          metadata: { 
-            chunk_index: index, 
-            source: 'PG_AR_2024',
-            total_chunks: chunks.length
-          },
-          public_read: true
-        });
+    // Process chunks in batches to avoid overwhelming the database
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+      const batch = chunks.slice(i, i + BATCH_SIZE);
+      const chunkInsertPromises = batch.map((chunk, batchIndex) => {
+        const index = i + batchIndex;
+        return supabase
+          .from('document_chunks')
+          .insert({
+            document_id: doc.id,
+            content: chunk,
+            metadata: { 
+              chunk_index: index, 
+              source: 'PG_AR_2024',
+              total_chunks: chunks.length
+            },
+            public_read: true
+          });
+      });
 
-      if (chunkError) {
-        console.error('🌱 Error inserting chunk:', chunkError);
-      } else {
-        chunksInserted++;
-      }
+      const results = await Promise.all(chunkInsertPromises);
+      const insertedCount = results.filter(r => !r.error).length;
+      chunksInserted += insertedCount;
+      
+      console.log(`🌱 Batch processed: ${insertedCount}/${batch.length} chunks inserted (total: ${chunksInserted}/${chunks.length})`);
     }
-
-    console.log('🌱 Chunks inserted:', chunksInserted, 'of', chunks.length);
 
     return new Response(JSON.stringify({ 
       status: 'success',
@@ -110,17 +116,22 @@ serve(async (req) => {
   }
 });
 
-function chunkText(text: string, chunkSize: number): string[] {
-  // 🌱 Smart chunking that tries to break at sentence boundaries
-  const chunks = [];
-  let currentChunk = '';
+async function chunkTextAdvanced(text: string, targetSize: number): Promise<string[]> {
+  // First, clean and normalize the text
+  const cleanedText = text
+    .replace(/\r\n/g, '\n')              // Normalize line endings
+    .replace(/\n{3,}/g, '\n\n')          // Normalize multiple blank lines
+    .replace(/\s{2,}/g, ' ');            // Normalize multiple spaces
+
+  // Split by paragraphs first (better semantic boundaries)
+  const paragraphs = cleanedText.split(/\n\s*\n/);
   
-  // Split by paragraphs first
-  const paragraphs = text.split(/\n\s*\n/);
+  const chunks: string[] = [];
+  let currentChunk = '';
   
   for (const paragraph of paragraphs) {
     // If adding this paragraph would exceed chunk size, finalize current chunk
-    if (currentChunk.length + paragraph.length > chunkSize && currentChunk.length > 0) {
+    if (currentChunk.length + paragraph.length > targetSize && currentChunk.length > 0) {
       chunks.push(currentChunk.trim());
       currentChunk = paragraph;
     } else {
@@ -133,22 +144,22 @@ function chunkText(text: string, chunkSize: number): string[] {
     chunks.push(currentChunk.trim());
   }
   
-  // If any chunk is still too large, split it further
-  const finalChunks = [];
+  // For paragraphs that are still too large, split them at sentence boundaries
+  const finalChunks: string[] = [];
   for (const chunk of chunks) {
-    if (chunk.length <= chunkSize) {
+    if (chunk.length <= targetSize) {
       finalChunks.push(chunk);
     } else {
-      // Split by sentences
-      const sentences = chunk.split(/[.!?]+\s+/);
+      // Split by sentences for more precise chunking
+      const sentences = chunk.split(/(?<=[.!?])\s+/);
       let subChunk = '';
       
       for (const sentence of sentences) {
-        if (subChunk.length + sentence.length > chunkSize && subChunk.length > 0) {
+        if (subChunk.length + sentence.length > targetSize && subChunk.length > 0) {
           finalChunks.push(subChunk.trim());
           subChunk = sentence;
         } else {
-          subChunk += (subChunk ? '. ' : '') + sentence;
+          subChunk += (subChunk ? ' ' : '') + sentence;
         }
       }
       
@@ -159,4 +170,12 @@ function chunkText(text: string, chunkSize: number): string[] {
   }
   
   return finalChunks;
+}
+
+async function hashText(text: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }

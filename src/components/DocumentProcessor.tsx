@@ -5,13 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, FileText, CheckCircle, AlertCircle } from "lucide-react";
+import { Upload, FileText, CheckCircle, AlertCircle, FileUp, FileDown } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 
 const DocumentProcessor = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [textContent, setTextContent] = useState('');
   const [filename, setFilename] = useState('');
   const [processingResult, setProcessingResult] = useState<any>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [fileSize, setFileSize] = useState<number | null>(null);
   const { toast } = useToast();
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -19,20 +22,67 @@ const DocumentProcessor = () => {
     if (!file) return;
 
     setFilename(file.name);
+    setFileSize(file.size);
+    setUploadProgress(0);
     
-    try {
-      const text = await file.text();
-      setTextContent(text);
-      toast({
-        title: "File loaded",
-        description: `${file.name} has been loaded. Review the content and click "Process Document" to update the system.`,
-      });
-    } catch (error) {
-      toast({
-        title: "Error reading file",
-        description: "Please ensure the file is a text document.",
-        variant: "destructive",
-      });
+    // For large files, read in chunks to avoid browser memory issues
+    if (file.size > 5 * 1024 * 1024) { // 5MB threshold
+      const chunkSize = 1024 * 1024; // 1MB chunks
+      const chunks = Math.ceil(file.size / chunkSize);
+      let content = '';
+      let loadedChunks = 0;
+
+      const reader = new FileReader();
+      
+      reader.onload = (e) => {
+        content += e.target?.result;
+        loadedChunks++;
+        setUploadProgress(Math.floor((loadedChunks / chunks) * 100));
+        
+        if (loadedChunks < chunks) {
+          // Read next chunk
+          const start = loadedChunks * chunkSize;
+          const end = Math.min(start + chunkSize, file.size);
+          reader.readAsText(file.slice(start, end));
+        } else {
+          // All chunks read
+          setTextContent(content);
+          toast({
+            title: "Large file loaded",
+            description: `${file.name} (${(file.size / (1024 * 1024)).toFixed(2)}MB) has been loaded. Review and click "Process Document" to update.`,
+          });
+          setUploadProgress(100);
+        }
+      };
+      
+      reader.onerror = () => {
+        toast({
+          title: "Error reading file",
+          description: "There was a problem reading this file. Try a different format.",
+          variant: "destructive",
+        });
+      };
+      
+      // Start reading first chunk
+      const firstChunk = file.slice(0, chunkSize);
+      reader.readAsText(firstChunk);
+    } else {
+      // Small file - read normally
+      try {
+        const text = await file.text();
+        setTextContent(text);
+        toast({
+          title: "File loaded",
+          description: `${file.name} (${(file.size / 1024).toFixed(2)}KB) has been loaded. Review and click "Process Document" to update the system.`,
+        });
+        setUploadProgress(100);
+      } catch (error) {
+        toast({
+          title: "Error reading file",
+          description: "Please ensure the file is a text document.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -47,6 +97,7 @@ const DocumentProcessor = () => {
     }
 
     setIsProcessing(true);
+    setProcessingResult(null);
     
     try {
       const response = await fetch('https://fdaltcvpncdfocktnokn.supabase.co/functions/v1/process-document', {
@@ -61,7 +112,7 @@ const DocumentProcessor = () => {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to process document');
+        throw new Error(`Failed to process document: ${response.statusText}`);
       }
 
       const result = await response.json();
@@ -75,7 +126,7 @@ const DocumentProcessor = () => {
       console.error('Processing error:', error);
       toast({
         title: "Processing failed",
-        description: "There was an error processing the document. Please try again.",
+        description: error instanceof Error ? error.message : "There was an error processing the document. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -96,7 +147,7 @@ const DocumentProcessor = () => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
-            <Upload className="w-5 h-5" />
+            <FileUp className="w-5 h-5" />
             <span>Upload P&G Annual Report</span>
           </CardTitle>
           <CardDescription>
@@ -104,14 +155,30 @@ const DocumentProcessor = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Input
-            type="file"
-            accept=".txt,.pdf,.doc,.docx"
-            onChange={handleFileUpload}
-            className="cursor-pointer"
-          />
+          <label className="flex flex-col items-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:bg-gray-50 transition cursor-pointer">
+            <Upload className="w-8 h-8 text-gray-400 mb-2" />
+            <span className="text-sm font-medium text-gray-700">Click to select file</span>
+            <span className="text-xs text-gray-500 mt-1">or drag and drop</span>
+            <Input
+              type="file"
+              accept=".txt,.pdf,.doc,.docx"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+          </label>
+          
+          {uploadProgress > 0 && uploadProgress < 100 && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs text-gray-600">
+                <span>Loading file...</span>
+                <span>{uploadProgress}%</span>
+              </div>
+              <Progress value={uploadProgress} className="h-2" />
+            </div>
+          )}
+          
           <p className="text-sm text-gray-500">
-            Supported formats: .txt, .pdf, .doc, .docx (Note: PDF and Word files will need to be converted to text first)
+            For optimal results, use a .txt file of the complete P&G Annual Report text
           </p>
         </CardContent>
       </Card>
@@ -119,24 +186,38 @@ const DocumentProcessor = () => {
       {/* Manual Text Input */}
       <Card>
         <CardHeader>
-          <CardTitle>Or Paste Content Directly</CardTitle>
+          <CardTitle className="flex items-center space-x-2">
+            <FileText className="w-5 h-5" />
+            <span>Document Content</span>
+          </CardTitle>
           <CardDescription>
-            Copy and paste the P&G Annual Report content directly
+            Review, edit, or paste the P&G Annual Report content directly
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Input
-              placeholder="Enter filename (optional)"
-              value={filename}
-              onChange={(e) => setFilename(e.target.value)}
-            />
+            <div className="flex justify-between">
+              <Input
+                placeholder="Enter filename (optional)"
+                value={filename}
+                onChange={(e) => setFilename(e.target.value)}
+                className="max-w-xs"
+              />
+              {fileSize && (
+                <div className="text-xs text-gray-500 flex items-center">
+                  <FileDown className="w-3 h-3 mr-1" />
+                  {fileSize > 1024 * 1024 
+                    ? `${(fileSize / (1024 * 1024)).toFixed(2)} MB` 
+                    : `${(fileSize / 1024).toFixed(2)} KB`}
+                </div>
+              )}
+            </div>
             <Textarea
               placeholder="Paste the P&G Annual Report content here..."
               value={textContent}
               onChange={(e) => setTextContent(e.target.value)}
               rows={12}
-              className="resize-none font-mono text-sm"
+              className="font-mono text-sm"
             />
           </div>
           
@@ -203,13 +284,13 @@ const DocumentProcessor = () => {
           <div className="flex items-start space-x-3">
             <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
             <div>
-              <h4 className="font-medium text-blue-900">Instructions</h4>
-              <ol className="text-sm text-blue-700 mt-1 space-y-1 list-decimal list-inside">
-                <li>Upload or paste the actual P&G Annual Report content</li>
-                <li>Click "Process P&G Annual Report" to update the system</li>
-                <li>The system will replace the sample data with your real report</li>
-                <li>Future greenwashing analyses will use the actual P&G data</li>
-              </ol>
+              <h4 className="font-medium text-blue-900">Working with Large Documents</h4>
+              <ul className="text-sm text-blue-700 mt-1 space-y-1 list-disc list-inside">
+                <li>This tool can handle large annual reports (up to 50MB)</li>
+                <li>For optimal performance, convert PDFs to plain text first</li>
+                <li>The system will automatically chunk your document for analysis</li>
+                <li>Once processed, all greenwashing analyses will use your actual P&G report</li>
+              </ul>
             </div>
           </div>
         </CardContent>
