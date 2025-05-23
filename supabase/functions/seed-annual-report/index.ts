@@ -49,14 +49,7 @@ serve(async (req) => {
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { 
-        global: { 
-          headers: { 
-            Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` 
-          } 
-        } 
-      }
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
 
     // 🌱 Check if already seeded
@@ -81,8 +74,7 @@ serve(async (req) => {
       doc_id: 'PG_AR_2024',
       content: PG_AR_2024_CONTENT,
       metadata: { source: 'official_report', year: 2024 },
-      public_read: true,
-      user_id: null
+      public_read: true
     }).select().single();
 
     // 🌱 Create chunks
@@ -92,8 +84,7 @@ serve(async (req) => {
         document_id: doc.id,
         content: chunk,
         metadata: { chunk_index: index, source: 'PG_AR_2024' },
-        public_read: true,
-        user_id: null
+        public_read: true
       });
     }
 

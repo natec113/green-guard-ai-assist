@@ -16,12 +16,10 @@ serve(async (req) => {
 
   try {
     const { text } = await req.json();
-    const authHeader = req.headers.get('Authorization')!;
     
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
 
     // 🌱 Get embeddings for the input text
@@ -33,7 +31,7 @@ serve(async (req) => {
     // 🌱 Analyze with Groq for greenwashing detection
     const detection = await analyzeWithGroq(text, passages);
     
-    // 🌱 Log the detection
+    // 🌱 Log the detection (without user_id)
     await supabase.from('greenwashing_detections').insert({
       text_content: text,
       detection_result: detection

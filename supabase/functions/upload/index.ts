@@ -17,18 +17,16 @@ serve(async (req) => {
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File;
-    const authHeader = req.headers.get('Authorization')!;
     
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
 
     // 🌱 Extract text from file
     const content = await extractTextFromFile(file);
     
-    // 🌱 Store document
+    // 🌱 Store document (without user_id)
     const { data: doc } = await supabase.from('documents').insert({
       name: file.name,
       doc_id: crypto.randomUUID(),
@@ -36,7 +34,8 @@ serve(async (req) => {
       metadata: { 
         file_type: file.type,
         file_size: file.size 
-      }
+      },
+      public_read: true
     }).select().single();
 
     // 🌱 Chunk and embed content
@@ -48,7 +47,8 @@ serve(async (req) => {
         document_id: doc.id,
         content: chunk,
         metadata: { chunk_index: index },
-        embedding_hash: await hashEmbedding(embedding)
+        embedding_hash: await hashEmbedding(embedding),
+        public_read: true
       });
     });
 
