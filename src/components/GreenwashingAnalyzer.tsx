@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -31,15 +32,14 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
     try {
       console.log('Starting RAG analysis with content length:', content.length);
       
-      // Get the current session
-      const { data: sessionData } = await supabase.auth.getSession();
-      const accessToken = sessionData?.session?.access_token || '';
+      // Use anon key directly instead of relying on session
+      const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZkYWx0Y3ZwbmNkZm9ja3Rub2tuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwMDIwOTgsImV4cCI6MjA2MzU3ODA5OH0.h61gcLd3J06ccu4lumZBH-kQCUsl0c8v9mu3pzrfdfE";
       
       const response = await fetch('https://fdaltcvpncdfocktnokn.supabase.co/functions/v1/detect', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
         },
         body: JSON.stringify({ text: content }),
       });
