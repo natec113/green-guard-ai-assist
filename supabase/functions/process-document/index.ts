@@ -19,7 +19,7 @@ serve(async (req) => {
     
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
     console.log('🌱 Processing document:', filename);
@@ -57,6 +57,7 @@ serve(async (req) => {
       .single();
 
     if (docError) {
+      console.error('🌱 Document insert error:', docError);
       throw new Error(`Failed to insert document: ${docError.message}`);
     }
 
@@ -88,6 +89,14 @@ serve(async (req) => {
 
       const results = await Promise.all(chunkInsertPromises);
       const insertedCount = results.filter(r => !r.error).length;
+      
+      // Log any chunk insertion errors
+      results.forEach((result, idx) => {
+        if (result.error) {
+          console.error(`🌱 Chunk ${i + idx} insertion error:`, result.error);
+        }
+      });
+      
       chunksInserted += insertedCount;
       
       console.log(`🌱 Batch processed: ${insertedCount}/${batch.length} chunks inserted (total: ${chunksInserted}/${chunks.length})`);
