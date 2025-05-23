@@ -16,6 +16,7 @@ interface GreenwashingAnalyzerProps {
 const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
   const [analysis, setAnalysis] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -26,21 +27,33 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
 
   const analyzeContent = async () => {
     setIsAnalyzing(true);
+    setError(null);
     
     try {
+      console.log('Starting RAG analysis with content length:', content.length);
+      
       const response = await fetch('https://fdaltcvpncdfocktnokn.supabase.co/functions/v1/detect', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabase.auth.session()?.access_token || ''}`
         },
         body: JSON.stringify({ text: content }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to analyze content');
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Analysis API error:', response.status, errorData);
+        throw new Error(errorData.error || `API error: ${response.status}`);
       }
 
       const result = await response.json();
+      console.log('RAG analysis result:', result);
+      
+      // Handle error in the response
+      if (result.error) {
+        throw new Error(result.error);
+      }
       
       // 🌱 Transform the response to match UI expectations
       const transformedAnalysis = {
@@ -71,9 +84,12 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
       });
     } catch (error) {
       console.error('Analysis error:', error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      setError(errorMessage);
+      
       toast({
         title: "Analysis failed",
-        description: "Please check your API configuration and try again",
+        description: errorMessage,
         variant: "destructive",
       });
       
@@ -178,6 +194,20 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
     );
   }
 
+  if (error) {
+    return (
+      <Card className="border-red-300">
+        <CardContent className="p-12 text-center">
+          <AlertTriangle className="w-16 h-16 mx-auto mb-4 text-red-500" />
+          <h3 className="text-lg font-medium text-red-900 mb-2">Analysis Error</h3>
+          <p className="text-red-700 mb-6">{error}</p>
+          <Button onClick={analyzeContent} variant="outline">
+            Try Again
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
   
   return (
     <div className="space-y-6">

@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Upload, FileText, Search, AlertTriangle } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import GreenwashingAnalyzer from './GreenwashingAnalyzer';
+import { supabase } from "@/integrations/supabase/client";
 
 const MarketingDocumentProcessor = () => {
   const [isProcessing, setIsProcessing] = useState(false);

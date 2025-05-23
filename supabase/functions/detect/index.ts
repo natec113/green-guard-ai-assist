@@ -17,84 +17,135 @@ serve(async (req) => {
   try {
     const { text } = await req.json();
     
+    if (!text || text.trim() === "") {
+      throw new Error("No text provided for analysis");
+    }
+    
+    console.log('🌱 Analyzing text for greenwashing:', text.substring(0, 100) + '...');
+    
+    // Create Supabase client with SERVICE_ROLE_KEY for admin access to documents
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
-
-    // 🌱 Get embeddings for the input text
-    const embedding = await getEmbedding(text);
     
     // 🌱 Search for relevant passages in P&G annual report
+    console.log('🌱 Retrieving P&G document context...');
     const pgPassages = await searchPGAnnualReport(supabase, text);
     
+    if (pgPassages.length === 0) {
+      console.log('⚠️ Warning: No P&G document context found, using fallback');
+    } else {
+      console.log(`✅ Found ${pgPassages.length} relevant passages from P&G Annual Report`);
+    }
+    
     // 🌱 Analyze with Groq using RAG context
+    console.log('🌱 Sending to Groq for RAG analysis...');
     const detection = await analyzeWithRAG(text, pgPassages);
+    console.log('✅ Analysis complete');
     
     // 🌱 Log the detection (without user_id)
     await supabase.from('greenwashing_detections').insert({
       text_content: text,
       detection_result: detection
     });
+    console.log('✅ Detection saved to database');
 
     return new Response(JSON.stringify(detection), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
     console.error('🌱 Detection error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ 
+      error: error.message,
+      details: "An error occurred during greenwashing analysis"
+    }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });
 
-async function getEmbedding(text: string): Promise<number[]> {
-  const response = await fetch('https://api.openai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'text-embedding-ada-002',
-      input: text,
-    }),
-  });
-  
-  const data = await response.json();
-  return data.data[0].embedding;
-}
-
 async function searchPGAnnualReport(supabase: any, query: string) {
-  console.log('🌱 Searching P&G Annual Report for:', query);
+  console.log('🌱 Searching P&G Annual Report for:', query.substring(0, 50) + '...');
   
-  // 🌱 Search specifically in P&G Annual Report chunks
-  const { data: chunks } = await supabase
-    .from('document_chunks')
-    .select('content, metadata')
-    .eq('metadata->>source', 'PG_AR_2024')
-    .textSearch('content', query, { type: 'websearch' })
-    .limit(10);
-    
-  console.log('🌱 Found P&G passages:', chunks?.length || 0);
-  
-  if (!chunks || chunks.length === 0) {
-    // 🌱 Fallback: get some general P&G content
-    const { data: fallbackChunks } = await supabase
+  try {
+    // First try full text search
+    const { data: chunks, error } = await supabase
       .from('document_chunks')
       .select('content, metadata')
       .eq('metadata->>source', 'PG_AR_2024')
-      .limit(5);
+      .textSearch('content', query, { type: 'websearch', config: 'english' })
+      .limit(10);
+      
+    if (error) {
+      console.error('🌱 Error searching document chunks:', error);
+      throw error;
+    }
     
-    return fallbackChunks || [];
+    console.log('🌱 Found P&G passages:', chunks?.length || 0);
+    
+    if (!chunks || chunks.length === 0) {
+      console.log('🌱 No matching chunks found, using keyword search fallback');
+      
+      // Extract keywords from query (simple approach - words with 4+ chars)
+      const keywords = query
+        .split(/\s+/)
+        .filter(word => word.length >= 4)
+        .map(word => word.toLowerCase())
+        .slice(0, 5); // Take top 5 keywords
+      
+      if (keywords.length > 0) {
+        console.log('🌱 Using keywords for fallback search:', keywords.join(', '));
+        
+        // For each keyword, find matching chunks
+        const keywordSearches = keywords.map(keyword => 
+          supabase
+            .from('document_chunks')
+            .select('content, metadata')
+            .eq('metadata->>source', 'PG_AR_2024')
+            .ilike('content', `%${keyword}%`)
+            .limit(3)
+        );
+        
+        const results = await Promise.all(keywordSearches);
+        // Combine all results and remove duplicates
+        const allChunks = results
+          .flatMap(result => result.data || [])
+          .filter((chunk, index, self) => 
+            index === self.findIndex(c => c.content === chunk.content)
+          );
+        
+        console.log('🌱 Keyword search found:', allChunks.length);
+        return allChunks;
+      }
+      
+      // Last resort: get random chunks from the P&G document
+      const { data: fallbackChunks } = await supabase
+        .from('document_chunks')
+        .select('content, metadata')
+        .eq('metadata->>source', 'PG_AR_2024')
+        .limit(5);
+      
+      console.log('🌱 Using random document chunks as fallback');
+      return fallbackChunks || [];
+    }
+    
+    return chunks;
+  } catch (error) {
+    console.error('🌱 Error in searchPGAnnualReport:', error);
+    // Return empty array on error, don't fail completely
+    return [];
   }
-  
-  return chunks;
 }
 
 async function analyzeWithRAG(text: string, pgPassages: any[]) {
-  const pgContext = pgPassages.map(p => p.content).join('\n\n');
+  let pgContext = "No P&G Annual Report context available.";
+  
+  if (pgPassages && pgPassages.length > 0) {
+    pgContext = pgPassages.map(p => p.content).join('\n\n');
+    console.log('🌱 Using context length:', pgContext.length, 'characters');
+  }
   
   const prompt = `You are a greenwashing detection expert using P&G's own documented practices as the reference standard.
 
@@ -133,25 +184,52 @@ Respond in JSON format:
   "pg_references": ["specific P&G initiatives/metrics that provide context"]
 }`;
 
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${Deno.env.get('GROQ_API_KEY')}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'llama-3.1-70b-versatile',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.1,
-    }),
-  });
+  try {
+    console.log('🌱 Calling Groq API...');
+    
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${Deno.env.get('GROQ_API_KEY')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1,
+      }),
+    });
 
-  const data = await response.json();
-  const result = JSON.parse(data.choices[0].message.content);
-  
-  // 🌱 Add P&G context to the result
-  result.pg_context_used = pgPassages.length;
-  result.analysis_method = 'RAG-based comparison with P&G Annual Report 2024';
-  
-  return result;
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('🌱 Groq API error:', response.status, errorText);
+      throw new Error(`Groq API returned ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.choices || !data.choices[0] || !data.choices[0].message || !data.choices[0].message.content) {
+      console.error('🌱 Invalid Groq API response:', data);
+      throw new Error('Invalid response from Groq API');
+    }
+    
+    const resultText = data.choices[0].message.content;
+    let result;
+    
+    try {
+      result = JSON.parse(resultText);
+    } catch (parseError) {
+      console.error('🌱 Failed to parse Groq result as JSON:', resultText);
+      throw new Error('Failed to parse AI response as JSON');
+    }
+    
+    // Add metadata about the analysis
+    result.pg_context_used = pgPassages.length;
+    result.analysis_method = 'RAG-based comparison with P&G Annual Report 2024';
+    
+    return result;
+  } catch (error) {
+    console.error('🌱 Error in analyzeWithRAG:', error);
+    throw error;
+  }
 }
