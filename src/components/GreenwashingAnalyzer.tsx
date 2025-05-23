@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -32,11 +31,15 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
     try {
       console.log('Starting RAG analysis with content length:', content.length);
       
+      // Get the current session
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token || '';
+      
       const response = await fetch('https://fdaltcvpncdfocktnokn.supabase.co/functions/v1/detect', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabase.auth.session()?.access_token || ''}`
+          'Authorization': `Bearer ${accessToken}`
         },
         body: JSON.stringify({ text: content }),
       });
