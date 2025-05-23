@@ -5,8 +5,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import DocumentProcessorPage from "@/pages/DocumentProcessor";
-import Index from "@/pages/Index"; // Fixed casing
-import NotFound from "@/pages/NotFound"; // Fixed casing
+import MarketingAnalysisPage from "@/pages/MarketingAnalysis";
+import Index from "@/pages/Index";
+import NotFound from "@/pages/NotFound";
 
 function App() {
   const queryClient = new QueryClient();
@@ -19,6 +20,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/document-processor" element={<DocumentProcessorPage />} />
+            <Route path="/marketing-analysis" element={<MarketingAnalysisPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

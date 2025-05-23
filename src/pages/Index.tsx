@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Shield, FileText, Sparkles, Users, Upload, CheckCircle } from "lucide-react";
+import { Shield, FileText, Sparkles, Users, Upload, CheckCircle, Search, Database } from "lucide-react";
+import { useNavigate } from 'react-router-dom';
 import FileUpload from '@/components/FileUpload';
 import GreenwashingAnalyzer from '@/components/GreenwashingAnalyzer';
 import CommunicationOptimizer from '@/components/CommunicationOptimizer';
@@ -12,8 +13,9 @@ import LegalGuidelines from '@/components/LegalGuidelines';
 import LLMConfig from '@/components/LLMConfig';
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState('upload');
+  const [activeTab, setActiveTab] = useState('overview');
   const [uploadedContent, setUploadedContent] = useState('');
+  const navigate = useNavigate();
 
   const features = [
     {
@@ -82,6 +84,55 @@ const Index = () => {
         </div>
       </section>
 
+      {/* Quick Action Cards */}
+      <section className="px-4 pb-8">
+        <div className="container mx-auto">
+          <div className="text-center mb-8">
+            <h3 className="text-2xl font-bold text-gray-900 mb-2">Get Started</h3>
+            <p className="text-gray-600">Choose your workflow</p>
+          </div>
+          <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+            <Card 
+              className="bg-white/70 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 cursor-pointer"
+              onClick={() => navigate('/document-processor')}
+            >
+              <CardHeader className="text-center">
+                <Database className="w-12 h-12 mx-auto mb-3 text-blue-600" />
+                <CardTitle className="text-xl">1. Upload P&G Annual Report</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="text-sm mb-4">
+                  First, upload the official P&G Annual Report to serve as the reference database for analysis
+                </CardDescription>
+                <Button className="w-full" variant="outline">
+                  <Upload className="w-4 h-4 mr-2" />
+                  Upload Annual Report
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card 
+              className="bg-white/70 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 cursor-pointer"
+              onClick={() => navigate('/marketing-analysis')}
+            >
+              <CardHeader className="text-center">
+                <Search className="w-12 h-12 mx-auto mb-3 text-green-600" />
+                <CardTitle className="text-xl">2. Analyze Marketing Content</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="text-sm mb-4">
+                  Upload marketing documents to analyze for greenwashing against the P&G Annual Report
+                </CardDescription>
+                <Button className="w-full">
+                  <Shield className="w-4 h-4 mr-2" />
+                  Analyze Marketing Content
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
+
       {/* Main Application Tabs */}
       <section className="px-4 pb-12">
         <div className="container mx-auto">
@@ -90,8 +141,9 @@ const Index = () => {
             <div className="border-b border-gray-200">
               <nav className="flex space-x-8 px-6">
                 {[
-                  { id: 'upload', label: 'Upload Content', icon: Upload },
-                  { id: 'analyze', label: 'Analyze Greenwashing', icon: Shield },
+                  { id: 'overview', label: 'Platform Overview', icon: Shield },
+                  { id: 'upload', label: 'Quick Upload', icon: Upload },
+                  { id: 'analyze', label: 'Quick Analysis', icon: Shield },
                   { id: 'optimize', label: 'Optimize Communication', icon: Sparkles },
                   { id: 'agents', label: 'AI Marketing Agents', icon: Users },
                   { id: 'guidelines', label: 'Legal Guidelines', icon: FileText }
@@ -114,6 +166,26 @@ const Index = () => {
 
             {/* Tab Content */}
             <div className="p-6">
+              {activeTab === 'overview' && (
+                <div className="text-center py-12">
+                  <Shield className="w-16 h-16 mx-auto mb-4 text-green-600" />
+                  <h3 className="text-2xl font-bold text-gray-900 mb-4">Welcome to GreenGuard AI</h3>
+                  <p className="text-gray-600 mb-8 max-w-2xl mx-auto">
+                    Your comprehensive solution for greenwashing detection and marketing compliance. 
+                    Start by uploading the P&G Annual Report, then analyze your marketing content.
+                  </p>
+                  <div className="flex justify-center space-x-4">
+                    <Button onClick={() => navigate('/document-processor')}>
+                      <Database className="w-4 h-4 mr-2" />
+                      Upload Annual Report
+                    </Button>
+                    <Button variant="outline" onClick={() => navigate('/marketing-analysis')}>
+                      <Search className="w-4 h-4 mr-2" />
+                      Analyze Marketing Content
+                    </Button>
+                  </div>
+                </div>
+              )}
               {activeTab === 'upload' && (
                 <FileUpload onContentUploaded={handleContentUploaded} />
               )}
@@ -134,7 +206,7 @@ const Index = () => {
         </div>
       </section>
 
-      {/* Feature Cards - Moved to bottom */}
+      {/* Feature Cards */}
       <section className="px-4 pb-12">
         <div className="container mx-auto">
           <div className="text-center mb-8">
