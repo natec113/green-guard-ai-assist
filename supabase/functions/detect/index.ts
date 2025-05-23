@@ -1,5 +1,5 @@
 
-// 🌱 Greenwashing Detection Endpoint
+// 🌱 Greenwashing Detection Endpoint with RAG
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -25,11 +25,11 @@ serve(async (req) => {
     // 🌱 Get embeddings for the input text
     const embedding = await getEmbedding(text);
     
-    // 🌱 Search for relevant passages in document chunks
-    const passages = await searchRelevantPassages(supabase, embedding, text);
+    // 🌱 Search for relevant passages in P&G annual report
+    const pgPassages = await searchPGAnnualReport(supabase, text);
     
-    // 🌱 Analyze with Groq for greenwashing detection
-    const detection = await analyzeWithGroq(text, passages);
+    // 🌱 Analyze with Groq using RAG context
+    const detection = await analyzeWithRAG(text, pgPassages);
     
     // 🌱 Log the detection (without user_id)
     await supabase.from('greenwashing_detections').insert({
@@ -66,46 +66,71 @@ async function getEmbedding(text: string): Promise<number[]> {
   return data.data[0].embedding;
 }
 
-async function searchRelevantPassages(supabase: any, embedding: number[], query: string) {
-  // 🌱 For now, use text search until vector search is available
-  const { data } = await supabase
+async function searchPGAnnualReport(supabase: any, query: string) {
+  console.log('🌱 Searching P&G Annual Report for:', query);
+  
+  // 🌱 Search specifically in P&G Annual Report chunks
+  const { data: chunks } = await supabase
     .from('document_chunks')
     .select('content, metadata')
-    .textSearch('content', query)
-    .limit(5);
+    .eq('metadata->>source', 'PG_AR_2024')
+    .textSearch('content', query, { type: 'websearch' })
+    .limit(10);
     
-  return data || [];
+  console.log('🌱 Found P&G passages:', chunks?.length || 0);
+  
+  if (!chunks || chunks.length === 0) {
+    // 🌱 Fallback: get some general P&G content
+    const { data: fallbackChunks } = await supabase
+      .from('document_chunks')
+      .select('content, metadata')
+      .eq('metadata->>source', 'PG_AR_2024')
+      .limit(5);
+    
+    return fallbackChunks || [];
+  }
+  
+  return chunks;
 }
 
-async function analyzeWithGroq(text: string, passages: any[]) {
-  const context = passages.map(p => p.content).join('\n\n');
+async function analyzeWithRAG(text: string, pgPassages: any[]) {
+  const pgContext = pgPassages.map(p => p.content).join('\n\n');
   
-  const prompt = `Analyze this text for greenwashing using P&G guidelines and regulatory standards.
+  const prompt = `You are a greenwashing detection expert using P&G's own documented practices as the reference standard.
 
-Context from P&G documents:
-${context}
+CONTEXT FROM P&G ANNUAL REPORT 2024:
+${pgContext}
 
-Text to analyze: "${text}"
+ANALYSIS TASK:
+Analyze this text for greenwashing: "${text}"
 
-Identify specific phrases (not just individual words) that may constitute greenwashing. For each flagged phrase, provide:
-1. The exact phrase from the text
-2. Risk level (high/medium/low)
-3. Justification based on P&G guidelines
-4. Suggested improvement
+CRITICAL INSTRUCTIONS:
+1. ONLY flag phrases that make environmental claims NOT supported by the P&G Annual Report context above
+2. If a claim is substantiated by P&G's documented practices, metrics, or commitments in the report, do NOT flag it
+3. Focus on unsupported vague claims like "eco-friendly" or "green" without specific backing
+4. Consider P&G's actual sustainability initiatives, targets, and achievements as valid substantiation
+
+For each potentially problematic phrase, check if it's supported by the P&G context. If supported, exclude it from flagged_phrases.
 
 Respond in JSON format:
 {
   "label": "high|medium|low",
-  "justification": "explanation",
+  "justification": "explanation focusing on what IS and ISN'T supported by P&G's documented practices",
   "flagged_phrases": [
     {
       "phrase": "exact phrase from text",
       "risk_level": "high|medium|low", 
-      "justification": "why this phrase is problematic",
-      "suggestion": "how to improve it"
+      "justification": "why this specific phrase lacks substantiation in P&G's documented practices",
+      "suggestion": "how to improve it with specific P&G data/initiatives"
     }
   ],
-  "passages": ["relevant document excerpts"]
+  "supported_claims": [
+    {
+      "phrase": "exact phrase that IS supported",
+      "supporting_evidence": "specific P&G practice/metric that validates this claim"
+    }
+  ],
+  "pg_references": ["specific P&G initiatives/metrics that provide context"]
 }`;
 
   const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -122,5 +147,11 @@ Respond in JSON format:
   });
 
   const data = await response.json();
-  return JSON.parse(data.choices[0].message.content);
+  const result = JSON.parse(data.choices[0].message.content);
+  
+  // 🌱 Add P&G context to the result
+  result.pg_context_used = pgPassages.length;
+  result.analysis_method = 'RAG-based comparison with P&G Annual Report 2024';
+  
+  return result;
 }

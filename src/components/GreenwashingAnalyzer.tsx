@@ -1,10 +1,11 @@
+
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Shield, Eye, TrendingUp, FileText, AlertCircle } from "lucide-react";
+import { AlertTriangle, Shield, Eye, TrendingUp, FileText, AlertCircle, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -27,14 +28,10 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
     setIsAnalyzing(true);
     
     try {
-      // 🌱 Call the new detect endpoint
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      const response = await fetch('/functions/v1/detect', {
+      const response = await fetch('https://fdaltcvpncdfocktnokn.supabase.co/functions/v1/detect', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
         },
         body: JSON.stringify({ text: content }),
       });
@@ -51,28 +48,32 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
         riskScore: getRiskScore(result.label),
         flaggedWords: result.flagged_phrases?.map((p: any) => p.phrase) || [],
         flaggedPhrases: result.flagged_phrases || [],
+        supportedClaims: result.supported_claims || [],
         totalWords: content.split(' ').length,
         flaggedCount: result.flagged_phrases?.length || 0,
+        supportedCount: result.supported_claims?.length || 0,
         compliance: {
           eu: result.label !== 'high',
           us: result.label !== 'high'
         },
         recommendations: generateRecommendations(result.flagged_phrases || [], result.label),
         detailedFindings: result.flagged_phrases || [],
-        passages: result.passages || []
+        pgReferences: result.pg_references || [],
+        pgContextUsed: result.pg_context_used || 0,
+        analysisMethod: result.analysis_method || 'RAG-based analysis'
       };
       
       setAnalysis(transformedAnalysis);
       
       toast({
-        title: "AI analysis complete",
-        description: `Found ${transformedAnalysis.flaggedCount} potential greenwashing phrases`,
+        title: "🌱 RAG Analysis Complete",
+        description: `Analyzed against P&G Annual Report. Found ${transformedAnalysis.flaggedCount} unsupported phrases, ${transformedAnalysis.supportedCount} validated claims`,
       });
     } catch (error) {
       console.error('Analysis error:', error);
       toast({
         title: "Analysis failed",
-        description: "Please check your LLM configuration and try again",
+        description: "Please check your API configuration and try again",
         variant: "destructive",
       });
       
@@ -158,7 +159,7 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
         <CardContent className="p-12 text-center">
           <FileText className="w-16 h-16 mx-auto mb-4 text-gray-400" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No Content to Analyze</h3>
-          <p className="text-gray-500">Upload a file or paste text content to begin AI-powered greenwashing analysis</p>
+          <p className="text-gray-500">Upload a file or paste text content to begin RAG-powered greenwashing analysis against P&G's documented practices</p>
         </CardContent>
       </Card>
     );
@@ -169,8 +170,8 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
       <Card>
         <CardContent className="p-12 text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-green-600 mx-auto mb-4"></div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">🌱 AI Analysis in Progress...</h3>
-          <p className="text-gray-500 mb-4">Using P&G guidelines and RAG-powered detection</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">🌱 RAG Analysis in Progress...</h3>
+          <p className="text-gray-500 mb-4">Comparing against P&G Annual Report 2024 using AI-powered retrieval</p>
           <Progress value={66} className="w-64 mx-auto" />
         </CardContent>
       </Card>
@@ -181,17 +182,22 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h3 className="text-2xl font-bold text-gray-900 mb-2">🌱 AI-Powered Greenwashing Analysis</h3>
-        <p className="text-gray-600">Based on P&G guidelines and regulatory standards</p>
+        <h3 className="text-2xl font-bold text-gray-900 mb-2">🌱 RAG-Powered Greenwashing Analysis</h3>
+        <p className="text-gray-600">Validated against P&G Annual Report 2024 documented practices</p>
+        {analysis?.pgContextUsed && (
+          <Badge variant="outline" className="mt-2">
+            {analysis.pgContextUsed} P&G document passages analyzed
+          </Badge>
+        )}
       </div>
 
       {/* Risk Overview */}
-      <div className="grid md:grid-cols-3 gap-6">
+      <div className="grid md:grid-cols-4 gap-6">
         <Card className={`border-2 ${getRiskColor(analysis?.riskLevel)}`}>
           <CardHeader className="text-center">
             <AlertTriangle className="w-8 h-8 mx-auto mb-2" />
             <CardTitle className="capitalize">{analysis?.riskLevel} Risk</CardTitle>
-            <CardDescription>AI Assessment</CardDescription>
+            <CardDescription>RAG Analysis</CardDescription>
           </CardHeader>
           <CardContent className="text-center">
             <div className="text-3xl font-bold mb-2">{analysis?.riskScore}%</div>
@@ -201,13 +207,26 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
 
         <Card>
           <CardHeader className="text-center">
-            <Eye className="w-8 h-8 mx-auto mb-2 text-orange-600" />
+            <AlertCircle className="w-8 h-8 mx-auto mb-2 text-red-600" />
             <CardTitle>{analysis?.flaggedCount}</CardTitle>
-            <CardDescription>Flagged Phrases</CardDescription>
+            <CardDescription>Unsupported Claims</CardDescription>
           </CardHeader>
           <CardContent className="text-center">
             <div className="text-sm text-gray-600">
-              Out of {analysis?.totalWords} total words
+              Not validated by P&G report
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="text-center">
+            <CheckCircle className="w-8 h-8 mx-auto mb-2 text-green-600" />
+            <CardTitle>{analysis?.supportedCount}</CardTitle>
+            <CardDescription>Validated Claims</CardDescription>
+          </CardHeader>
+          <CardContent className="text-center">
+            <div className="text-sm text-gray-600">
+              Supported by P&G practices
             </div>
           </CardContent>
         </Card>
@@ -235,56 +254,109 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
         </Card>
       </div>
 
-      {/* Detailed Findings */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <AlertCircle className="w-5 h-5" />
-            <span>🌱 AI-Detected Phrases</span>
-          </CardTitle>
-          <CardDescription>
-            Phrases flagged by our AI system using P&G guidelines
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4">
-            {analysis?.detailedFindings.map((finding: any, index: number) => (
-              <div key={index} className="border rounded-lg p-4 bg-gray-50">
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex items-center space-x-2">
-                    <Badge variant="outline" className={
-                      finding.risk_level === 'high' ? 'border-red-500 text-red-700' :
-                      finding.risk_level === 'medium' ? 'border-yellow-500 text-yellow-700' :
-                      'border-green-500 text-green-700'
-                    }>
+      {/* Supported Claims Section */}
+      {analysis?.supportedClaims && analysis.supportedClaims.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <CheckCircle className="w-5 h-5 text-green-600" />
+              <span>🌱 Validated Environmental Claims</span>
+            </CardTitle>
+            <CardDescription>
+              Claims supported by P&G's documented practices and initiatives
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4">
+              {analysis.supportedClaims.map((claim: any, index: number) => (
+                <div key={index} className="border rounded-lg p-4 bg-green-50">
+                  <div className="flex justify-between items-start mb-2">
+                    <Badge variant="outline" className="border-green-500 text-green-700">
+                      "{claim.phrase}"
+                    </Badge>
+                    <Badge className="bg-green-600">Validated</Badge>
+                  </div>
+                  <p className="text-sm text-green-700">
+                    <strong>Supporting Evidence:</strong> {claim.supporting_evidence}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Unsupported Claims */}
+      {analysis?.detailedFindings && analysis.detailedFindings.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <AlertCircle className="w-5 h-5" />
+              <span>🌱 Unsupported Environmental Claims</span>
+            </CardTitle>
+            <CardDescription>
+              Claims that lack substantiation in P&G's documented practices
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4">
+              {analysis.detailedFindings.map((finding: any, index: number) => (
+                <div key={index} className="border rounded-lg p-4 bg-red-50">
+                  <div className="flex justify-between items-start mb-2">
+                    <Badge variant="outline" className="border-red-500 text-red-700">
                       "{finding.phrase}"
                     </Badge>
+                    <Badge variant="secondary" className="capitalize">
+                      {finding.risk_level} Risk
+                    </Badge>
                   </div>
-                  <Badge variant="secondary" className="capitalize">
-                    {finding.risk_level} Risk
-                  </Badge>
+                  <p className="text-sm text-gray-700 mb-2">
+                    <strong>Issue:</strong> {finding.justification}
+                  </p>
+                  <p className="text-sm text-blue-700">
+                    <strong>Suggestion:</strong> {finding.suggestion}
+                  </p>
                 </div>
-                <p className="text-sm text-gray-700 mb-2">
-                  <strong>AI Justification:</strong> {finding.justification}
-                </p>
-                <p className="text-sm text-blue-700">
-                  <strong>Suggestion:</strong> {finding.suggestion}
-                </p>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* P&G References */}
+      {analysis?.pgReferences && analysis.pgReferences.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <FileText className="w-5 h-5" />
+              <span>🌱 P&G Annual Report References</span>
+            </CardTitle>
+            <CardDescription>
+              Relevant P&G initiatives and practices used in analysis
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {analysis.pgReferences.map((ref: string, index: number) => (
+                <Alert key={index}>
+                  <FileText className="h-4 w-4" />
+                  <AlertDescription>{ref}</AlertDescription>
+                </Alert>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Recommendations */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <TrendingUp className="w-5 h-5" />
-            <span>🌱 AI Recommendations</span>
+            <span>🌱 RAG-Based Recommendations</span>
           </CardTitle>
           <CardDescription>
-            Actionable steps to improve compliance
+            Actionable steps based on P&G's documented best practices
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -302,7 +374,7 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
       {/* Action Buttons */}
       <div className="flex justify-center space-x-4">
         <Button onClick={analyzeContent} variant="outline">
-          🌱 Re-analyze with AI
+          🌱 Re-analyze with RAG
         </Button>
         <Button onClick={() => window.print()}>
           Export Report
