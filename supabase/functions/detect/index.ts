@@ -1,4 +1,3 @@
-
 // 🌱 Greenwashing Detection Endpoint with RAG
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -251,7 +250,7 @@ Respond in JSON format:
   }
 }
 
-// 🌱 Enhanced local fallback analysis if AI services fail
+// 🌱 Enhanced local fallback analysis if AI services fail - FIXED TO PREVENT OVERLAPS
 function localAnalysis(text: string, pgPassages: any[]) {
   console.log('🌱 Running local fallback analysis');
   
@@ -262,33 +261,59 @@ function localAnalysis(text: string, pgPassages: any[]) {
     'environmentally safe', 'renewable', 'recycled', 'non-toxic'
   ];
   
-  // Extract phrases from text containing green terms
-  const extractedPhrases = [];
-  const lowerText = text.toLowerCase();
-  
-  for (const term of greenwashingTerms) {
-    if (lowerText.includes(term)) {
-      // Get the surrounding context (simple approach)
-      const index = lowerText.indexOf(term);
-      const start = Math.max(0, index - 50);
-      const end = Math.min(text.length, index + term.length + 50);
-      extractedPhrases.push({
-        term: term,
-        context: text.substring(start, end),
-        fullPhrase: text.substring(start, end)
-      });
-    }
-  }
-  
-  // Check if phrases appear in PG passages
+  // Track found phrases to prevent overlaps
+  const foundPhrases = [];
   const flaggedPhrases = [];
   const supportedClaims = [];
   
+  // Function to check if two phrases overlap
+  function hasOverlap(phrase1: string, phrase2: string) {
+    // Check if one phrase is contained within another
+    return phrase1.includes(phrase2) || phrase2.includes(phrase1);
+  }
+  
+  // Function to check if a phrase overlaps with any already found phrase
+  function overlapsWithExisting(newPhrase: string, existingPhrases: any[]) {
+    return existingPhrases.some(existing => hasOverlap(newPhrase, existing.phrase || existing.fullPhrase));
+  }
+  
+  // Extract phrases from text containing green terms - avoid overlaps
+  for (const term of greenwashingTerms) {
+    const lowerText = text.toLowerCase();
+    let searchStart = 0;
+    
+    while (true) {
+      const index = lowerText.indexOf(term, searchStart);
+      if (index === -1) break;
+      
+      // Get the surrounding context (wider context for better matching)
+      const contextStart = Math.max(0, index - 30);
+      const contextEnd = Math.min(text.length, index + term.length + 30);
+      const contextPhrase = text.substring(contextStart, contextEnd).trim();
+      
+      // Check if this phrase overlaps with any already found phrases
+      if (!overlapsWithExisting(contextPhrase, foundPhrases)) {
+        foundPhrases.push({
+          term: term,
+          phrase: contextPhrase,
+          fullPhrase: contextPhrase,
+          startIndex: contextStart,
+          endIndex: contextEnd
+        });
+      }
+      
+      // Move search start to avoid finding the same term again
+      searchStart = index + term.length;
+    }
+  }
+  
+  console.log('🌱 Found unique phrases:', foundPhrases.length);
+  
   // Helper function to check if a phrase is supported by PG content
-  function isPhraseSupported(phrase, pgPassages) {
+  function isPhraseSupported(phraseObj: any, pgPassages: any[]) {
     for (const passage of pgPassages) {
       // Convert both to lowercase for case-insensitive comparison
-      if (passage.content.toLowerCase().includes(phrase.term.toLowerCase())) {
+      if (passage.content.toLowerCase().includes(phraseObj.term.toLowerCase())) {
         return {
           supported: true,
           evidence: passage.content.substring(0, 150) + '...'
@@ -298,17 +323,18 @@ function localAnalysis(text: string, pgPassages: any[]) {
     return { supported: false };
   }
   
-  for (const phrase of extractedPhrases) {
-    const supportCheck = isPhraseSupported(phrase, pgPassages);
+  // Process each unique phrase
+  for (const phraseObj of foundPhrases) {
+    const supportCheck = isPhraseSupported(phraseObj, pgPassages);
     
     if (supportCheck.supported) {
       supportedClaims.push({
-        phrase: phrase.fullPhrase,
+        phrase: phraseObj.fullPhrase,
         supporting_evidence: supportCheck.evidence
       });
     } else {
       flaggedPhrases.push({
-        phrase: phrase.fullPhrase,
+        phrase: phraseObj.fullPhrase,
         risk_level: "medium",
         justification: "This environmental claim could not be validated against P&G's documented practices",
         suggestion: "Provide specific evidence or metrics to support this claim"
@@ -316,40 +342,38 @@ function localAnalysis(text: string, pgPassages: any[]) {
     }
   }
   
-  // Check for exact matches of phrases in the provided text against PG content
+  // Check for exact matches of paragraphs against PG content (avoid overlaps)
   const paragraphs = text.split(/\n+/).filter(p => p.trim().length > 15);
   
   for (const paragraph of paragraphs) {
+    // Skip if this paragraph overlaps with any already processed phrase
+    if (overlapsWithExisting(paragraph, [...flaggedPhrases, ...supportedClaims])) {
+      continue;
+    }
+    
     let isSupported = false;
     let supportingEvidence = '';
     
-    // Only check paragraphs that aren't already flagged or supported
-    const alreadyProcessed = [...flaggedPhrases, ...supportedClaims].some(
-      item => item.phrase.includes(paragraph) || paragraph.includes(item.phrase)
-    );
-    
-    if (!alreadyProcessed) {
-      for (const passage of pgPassages) {
-        // Check if significant parts of the paragraph appear in the passage
-        const words = paragraph.toLowerCase().split(/\s+/).filter(w => w.length > 4);
-        const matchingWords = words.filter(word => 
-          passage.content.toLowerCase().includes(word.toLowerCase())
-        );
-        
-        // If most key words match, consider it supported
-        if (matchingWords.length > words.length * 0.7) {
-          isSupported = true;
-          supportingEvidence = passage.content.substring(0, 150) + '...';
-          break;
-        }
-      }
+    for (const passage of pgPassages) {
+      // Check if significant parts of the paragraph appear in the passage
+      const words = paragraph.toLowerCase().split(/\s+/).filter(w => w.length > 4);
+      const matchingWords = words.filter(word => 
+        passage.content.toLowerCase().includes(word.toLowerCase())
+      );
       
-      if (isSupported) {
-        supportedClaims.push({
-          phrase: paragraph,
-          supporting_evidence: supportingEvidence
-        });
+      // If most key words match, consider it supported
+      if (matchingWords.length > words.length * 0.7) {
+        isSupported = true;
+        supportingEvidence = passage.content.substring(0, 150) + '...';
+        break;
       }
+    }
+    
+    if (isSupported && !overlapsWithExisting(paragraph, supportedClaims)) {
+      supportedClaims.push({
+        phrase: paragraph,
+        supporting_evidence: supportingEvidence
+      });
     }
   }
   
@@ -357,14 +381,16 @@ function localAnalysis(text: string, pgPassages: any[]) {
   const riskLevel = flaggedPhrases.length > 3 ? "high" : 
                    flaggedPhrases.length > 0 ? "medium" : "low";
   
+  console.log('🌱 Local analysis complete - flagged:', flaggedPhrases.length, 'supported:', supportedClaims.length);
+  
   // Construct local analysis result
   return {
     label: riskLevel,
-    justification: `Local analysis found ${flaggedPhrases.length} potentially unsupported environmental claims and ${supportedClaims.length} supported claims.`,
+    justification: `Local analysis found ${flaggedPhrases.length} potentially unsupported environmental claims and ${supportedClaims.length} supported claims. Overlapping phrases have been deduplicated.`,
     flagged_phrases: flaggedPhrases,
     supported_claims: supportedClaims,
     pg_references: pgPassages.map(p => p.content.substring(0, 100) + '...'),
     pg_context_used: pgPassages.length,
-    analysis_method: 'Local pattern-matching with P&G document context (fallback)'
+    analysis_method: 'Local pattern-matching with P&G document context (fallback) - deduplicated'
   };
 }
