@@ -82,8 +82,8 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
       setAnalysis(transformedAnalysis);
       
       toast({
-        title: "🌱 RAG Analysis Complete",
-        description: `Analyzed against P&G Annual Report. Found ${transformedAnalysis.flaggedCount} unsupported phrases, ${transformedAnalysis.supportedCount} validated claims`,
+        title: "🌱 Analysis Complete",
+        description: `Using ${result.analysis_method}. Found ${transformedAnalysis.flaggedCount} unsupported phrases, ${transformedAnalysis.supportedCount} validated claims`,
       });
     } catch (error) {
       console.error('Analysis error:', error);
@@ -178,7 +178,7 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
         <CardContent className="p-12 text-center">
           <FileText className="w-16 h-16 mx-auto mb-4 text-gray-400" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No Content to Analyze</h3>
-          <p className="text-gray-500">Upload a file or paste text content to begin RAG-powered greenwashing analysis against P&G's documented practices</p>
+          <p className="text-gray-500">Upload a file or paste text content to begin greenwashing analysis against P&G's documented practices</p>
         </CardContent>
       </Card>
     );
@@ -189,8 +189,8 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
       <Card>
         <CardContent className="p-12 text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-green-600 mx-auto mb-4"></div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">🌱 RAG Analysis in Progress...</h3>
-          <p className="text-gray-500 mb-4">Comparing against P&G Annual Report 2024 using AI-powered retrieval</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">🌱 Analysis in Progress...</h3>
+          <p className="text-gray-500 mb-4">Comparing against P&G Annual Report 2024 using document search</p>
           <Progress value={66} className="w-64 mx-auto" />
         </CardContent>
       </Card>

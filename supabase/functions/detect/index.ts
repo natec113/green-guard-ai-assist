@@ -40,10 +40,19 @@ serve(async (req) => {
       console.log(`✅ Found ${pgPassages.length} relevant passages from P&G Annual Report`);
     }
     
-    // 🌱 Analyze with Groq using RAG context
-    console.log('🌱 Sending to Groq for RAG analysis...');
-    const detection = await analyzeWithRAG(text, pgPassages);
-    console.log('✅ Analysis complete');
+    let detection;
+    
+    try {
+      // 🌱 Try to analyze with Groq using RAG context
+      console.log('🌱 Sending to Groq for RAG analysis...');
+      detection = await analyzeWithRAG(text, pgPassages);
+      console.log('✅ Analysis complete');
+    } catch (groqError) {
+      console.error('⚠️ Groq API error:', groqError);
+      console.log('🌱 Using local fallback analysis instead');
+      // 🌱 If Groq fails, use simple local analysis
+      detection = localAnalysis(text, pgPassages);
+    }
     
     // 🌱 Log the detection (without user_id)
     await supabase.from('greenwashing_detections').insert({
@@ -185,13 +194,19 @@ Respond in JSON format:
   "pg_references": ["specific P&G initiatives/metrics that provide context"]
 }`;
 
+  // Check if Groq API key is available
+  const groqApiKey = Deno.env.get('GROQ_API_KEY');
+  if (!groqApiKey) {
+    throw new Error("Missing Groq API key");
+  }
+
   try {
     console.log('🌱 Calling Groq API...');
     
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${Deno.env.get('GROQ_API_KEY')}`,
+        'Authorization': `Bearer ${groqApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -233,4 +248,76 @@ Respond in JSON format:
     console.error('🌱 Error in analyzeWithRAG:', error);
     throw error;
   }
+}
+
+// 🌱 Simple local fallback analysis if AI services fail
+function localAnalysis(text: string, pgPassages: any[]) {
+  console.log('🌱 Running local fallback analysis');
+  
+  // Extract potential green claims from text
+  const greenwashingTerms = [
+    'eco-friendly', 'natural', 'green', 'sustainable', 'organic', 
+    'biodegradable', 'clean', 'environmentally friendly', 'carbon neutral'
+  ];
+  
+  // Extract phrases from text containing green terms
+  const extractedPhrases = [];
+  const lowerText = text.toLowerCase();
+  
+  for (const term of greenwashingTerms) {
+    if (lowerText.includes(term)) {
+      // Get the surrounding context (simple approach)
+      const index = lowerText.indexOf(term);
+      const start = Math.max(0, index - 30);
+      const end = Math.min(text.length, index + term.length + 30);
+      extractedPhrases.push(text.substring(start, end));
+    }
+  }
+  
+  // Check if phrases appear in PG passages
+  const flaggedPhrases = [];
+  const supportedClaims = [];
+  
+  for (const phrase of extractedPhrases) {
+    let isSupported = false;
+    let supportingEvidence = '';
+    
+    // Check if phrase appears in any PG passage
+    for (const passage of pgPassages) {
+      if (passage.content.toLowerCase().includes(phrase.toLowerCase())) {
+        isSupported = true;
+        supportingEvidence = passage.content.substring(0, 150) + '...';
+        break;
+      }
+    }
+    
+    if (isSupported) {
+      supportedClaims.push({
+        phrase: phrase,
+        supporting_evidence: supportingEvidence
+      });
+    } else {
+      flaggedPhrases.push({
+        phrase: phrase,
+        risk_level: "medium",
+        justification: "This environmental claim could not be validated against P&G's documented practices",
+        suggestion: "Provide specific evidence or metrics to support this claim"
+      });
+    }
+  }
+  
+  // Get risk level based on number and severity of flagged phrases
+  const riskLevel = flaggedPhrases.length > 3 ? "high" : 
+                   flaggedPhrases.length > 0 ? "medium" : "low";
+  
+  // Construct local analysis result
+  return {
+    label: riskLevel,
+    justification: `Local analysis found ${flaggedPhrases.length} potentially unsupported environmental claims and ${supportedClaims.length} supported claims.`,
+    flagged_phrases: flaggedPhrases,
+    supported_claims: supportedClaims,
+    pg_references: pgPassages.map(p => p.content.substring(0, 100) + '...'),
+    pg_context_used: pgPassages.length,
+    analysis_method: 'Local pattern-matching with P&G document context (fallback)'
+  };
 }
