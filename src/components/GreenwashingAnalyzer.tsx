@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, Shield, Eye, TrendingUp, FileText, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface GreenwashingAnalyzerProps {
   content: string;
@@ -17,26 +17,6 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const { toast } = useToast();
 
-  // Greenwashing trigger words from the requirements
-  const greenwashingWords = [
-    'eco-friendly', 'eco', 'bio', 'natural', 'nature', 'health', 'healthy', 'environment',
-    'ecological', 'planet', 'earth', 'plant-based', 'waste-free', 'zero plastic',
-    'climate positive', 'low carbon', 'emission-free', 'sustainable', 'sustainability',
-    'green', 'greener future', 'doing our part', 'environmentally safe', 'non-toxic',
-    'clean', 'biodegradable', 'compostable', 'carbon', 'net-zero', 'conscious',
-    'low-impact', 'organic', 'eco-safe', 'environmentally', 'eco-certified',
-    'certified green', 'nature-approved', 'thoughtfully made', 'mindful',
-    'mindfully sourced', 'care', 'crafted with care', 'healing', 'giving back',
-    'pure', 'purity', 'light-weight', 'garden-grown', 'naturally balanced',
-    'holistic', 'balanced living', 'energy-cleansed', 'mindfully made',
-    'toxin-free', 'soulful ingredients', 'wellness-based', 'minimal impact',
-    'ethical', 'ethically', 'responsible', 'responsibility', 'environmental',
-    'mindfully', 'cleaner', 'tomorrow', 'future', 'less plastic', 'energy',
-    'efficient', 'carbon-neutral', 'eco-box', 'plant-powered', 'pure clean',
-    'pure protection', 'co2', 'emissions', 'chemical', 'ocean plastic',
-    'beach-plastic', 'zero waste'
-  ];
-
   useEffect(() => {
     if (content) {
       analyzeContent();
@@ -46,92 +26,121 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
   const analyzeContent = async () => {
     setIsAnalyzing(true);
     
-    // Simulate AI analysis
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    try {
+      // 🌱 Call the new detect endpoint
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const response = await fetch('/functions/v1/detect', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ text: content }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to analyze content');
+      }
+
+      const result = await response.json();
+      
+      // 🌱 Transform the response to match UI expectations
+      const transformedAnalysis = {
+        riskLevel: result.label,
+        riskScore: getRiskScore(result.label),
+        flaggedWords: result.flagged_phrases?.map((p: any) => p.phrase) || [],
+        flaggedPhrases: result.flagged_phrases || [],
+        totalWords: content.split(' ').length,
+        flaggedCount: result.flagged_phrases?.length || 0,
+        compliance: {
+          eu: result.label !== 'high',
+          us: result.label !== 'high'
+        },
+        recommendations: generateRecommendations(result.flagged_phrases || [], result.label),
+        detailedFindings: result.flagged_phrases || [],
+        passages: result.passages || []
+      };
+      
+      setAnalysis(transformedAnalysis);
+      
+      toast({
+        title: "AI analysis complete",
+        description: `Found ${transformedAnalysis.flaggedCount} potential greenwashing phrases`,
+      });
+    } catch (error) {
+      console.error('Analysis error:', error);
+      toast({
+        title: "Analysis failed",
+        description: "Please check your LLM configuration and try again",
+        variant: "destructive",
+      });
+      
+      // 🌱 Fallback to local analysis
+      performLocalAnalysis();
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const getRiskScore = (level: string) => {
+    switch (level) {
+      case 'high': return 85;
+      case 'medium': return 50;
+      case 'low': return 20;
+      default: return 0;
+    }
+  };
+
+  const performLocalAnalysis = () => {
+    // 🌱 Fallback local analysis logic
+    const greenwashingWords = [
+      'eco-friendly', 'natural', 'green', 'sustainable', 'pure', 'clean',
+      'biodegradable', 'organic', 'carbon-neutral', 'environmentally safe'
+    ];
     
     const lowerContent = content.toLowerCase();
-    const foundWords = greenwashingWords.filter(word => 
-      lowerContent.includes(word.toLowerCase())
-    );
+    const foundPhrases = greenwashingWords
+      .filter(word => lowerContent.includes(word.toLowerCase()))
+      .map(word => ({
+        phrase: word,
+        risk_level: 'medium',
+        justification: 'Generic environmental claim without specific evidence',
+        suggestion: 'Replace with specific, measurable benefits'
+      }));
     
-    const riskLevel = foundWords.length > 8 ? 'high' : 
-                     foundWords.length > 4 ? 'medium' : 'low';
+    const riskLevel = foundPhrases.length > 5 ? 'high' : 
+                     foundPhrases.length > 2 ? 'medium' : 'low';
     
-    const riskScore = Math.min(100, (foundWords.length / greenwashingWords.length) * 100 * 3);
-    
-    const analysisResult = {
+    setAnalysis({
       riskLevel,
-      riskScore: Math.round(riskScore),
-      flaggedWords: foundWords,
+      riskScore: getRiskScore(riskLevel),
+      flaggedWords: foundPhrases.map(p => p.phrase),
+      flaggedPhrases: foundPhrases,
       totalWords: content.split(' ').length,
-      flaggedCount: foundWords.length,
-      compliance: {
-        eu: riskLevel === 'low',
-        us: riskLevel !== 'high'
-      },
-      recommendations: generateRecommendations(foundWords, riskLevel),
-      detailedFindings: generateDetailedFindings(foundWords, content)
-    };
-    
-    setAnalysis(analysisResult);
-    setIsAnalyzing(false);
-    
-    toast({
-      title: "Analysis complete",
-      description: `Found ${foundWords.length} potential greenwashing indicators`,
+      flaggedCount: foundPhrases.length,
+      compliance: { eu: riskLevel !== 'high', us: riskLevel !== 'high' },
+      recommendations: generateRecommendations(foundPhrases, riskLevel),
+      detailedFindings: foundPhrases,
+      passages: []
     });
   };
 
-  const generateRecommendations = (flaggedWords: string[], riskLevel: string) => {
+  const generateRecommendations = (flaggedPhrases: any[], riskLevel: string) => {
     const recommendations = [];
     
     if (riskLevel === 'high') {
       recommendations.push("Consider removing vague environmental claims without substantiation");
       recommendations.push("Replace general terms with specific, measurable benefits");
-      recommendations.push("Add scientific backing or certifications to support claims");
     }
     
-    if (flaggedWords.includes('natural') || flaggedWords.includes('pure')) {
-      recommendations.push("Define what 'natural' or 'pure' means in your specific context");
-    }
-    
-    if (flaggedWords.includes('eco-friendly') || flaggedWords.includes('green')) {
-      recommendations.push("Replace with specific environmental benefits (e.g., '30% less packaging material')");
+    if (flaggedPhrases.some(p => p.phrase.includes('natural'))) {
+      recommendations.push("Define what 'natural' means in your specific context");
     }
     
     recommendations.push("Consider third-party certifications to validate environmental claims");
-    recommendations.push("Focus on specific, measurable improvements rather than general statements");
     
     return recommendations;
-  };
-
-  const generateDetailedFindings = (flaggedWords: string[], content: string) => {
-    return flaggedWords.map(word => {
-      const regex = new RegExp(`\\b${word}\\b`, 'gi');
-      const matches = content.match(regex) || [];
-      const context = content.split(' ').find(w => w.toLowerCase().includes(word.toLowerCase()));
-      
-      return {
-        word: word,
-        occurrences: matches.length,
-        context: context || word,
-        severity: word === 'natural' || word === 'eco-friendly' ? 'high' : 
-                 word === 'sustainable' || word === 'green' ? 'medium' : 'low',
-        suggestion: getSuggestionForWord(word)
-      };
-    });
-  };
-
-  const getSuggestionForWord = (word: string) => {
-    const suggestions: Record<string, string> = {
-      'natural': 'Specify which ingredients are from natural sources',
-      'eco-friendly': 'Provide specific environmental benefits with data',
-      'sustainable': 'Define sustainability metrics and goals',
-      'green': 'Replace with specific environmental improvements',
-      'pure': 'Clarify what purity means in your context',
-      'clean': 'Specify what makes the product clean'
-    };
-    return suggestions[word] || 'Provide specific evidence to support this claim';
   };
 
   const getRiskColor = (level: string) => {
@@ -149,7 +158,7 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
         <CardContent className="p-12 text-center">
           <FileText className="w-16 h-16 mx-auto mb-4 text-gray-400" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No Content to Analyze</h3>
-          <p className="text-gray-500">Upload a file or paste text content to begin greenwashing analysis</p>
+          <p className="text-gray-500">Upload a file or paste text content to begin AI-powered greenwashing analysis</p>
         </CardContent>
       </Card>
     );
@@ -160,19 +169,20 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
       <Card>
         <CardContent className="p-12 text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-green-600 mx-auto mb-4"></div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Analyzing Content...</h3>
-          <p className="text-gray-500 mb-4">Using EU and US greenwashing guidelines</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">🌱 AI Analysis in Progress...</h3>
+          <p className="text-gray-500 mb-4">Using P&G guidelines and RAG-powered detection</p>
           <Progress value={66} className="w-64 mx-auto" />
         </CardContent>
       </Card>
     );
   }
 
+  
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h3 className="text-2xl font-bold text-gray-900 mb-2">Greenwashing Analysis Results</h3>
-        <p className="text-gray-600">Based on European and US regulatory guidelines</p>
+        <h3 className="text-2xl font-bold text-gray-900 mb-2">🌱 AI-Powered Greenwashing Analysis</h3>
+        <p className="text-gray-600">Based on P&G guidelines and regulatory standards</p>
       </div>
 
       {/* Risk Overview */}
@@ -181,7 +191,7 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
           <CardHeader className="text-center">
             <AlertTriangle className="w-8 h-8 mx-auto mb-2" />
             <CardTitle className="capitalize">{analysis?.riskLevel} Risk</CardTitle>
-            <CardDescription>Overall Assessment</CardDescription>
+            <CardDescription>AI Assessment</CardDescription>
           </CardHeader>
           <CardContent className="text-center">
             <div className="text-3xl font-bold mb-2">{analysis?.riskScore}%</div>
@@ -193,7 +203,7 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
           <CardHeader className="text-center">
             <Eye className="w-8 h-8 mx-auto mb-2 text-orange-600" />
             <CardTitle>{analysis?.flaggedCount}</CardTitle>
-            <CardDescription>Flagged Terms</CardDescription>
+            <CardDescription>Flagged Phrases</CardDescription>
           </CardHeader>
           <CardContent className="text-center">
             <div className="text-sm text-gray-600">
@@ -230,10 +240,10 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <AlertCircle className="w-5 h-5" />
-            <span>Flagged Terms Analysis</span>
+            <span>🌱 AI-Detected Phrases</span>
           </CardTitle>
           <CardDescription>
-            Terms that may indicate greenwashing according to regulatory guidelines
+            Phrases flagged by our AI system using P&G guidelines
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -243,22 +253,19 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center space-x-2">
                     <Badge variant="outline" className={
-                      finding.severity === 'high' ? 'border-red-500 text-red-700' :
-                      finding.severity === 'medium' ? 'border-yellow-500 text-yellow-700' :
+                      finding.risk_level === 'high' ? 'border-red-500 text-red-700' :
+                      finding.risk_level === 'medium' ? 'border-yellow-500 text-yellow-700' :
                       'border-green-500 text-green-700'
                     }>
-                      {finding.word}
+                      "{finding.phrase}"
                     </Badge>
-                    <span className="text-sm text-gray-500">
-                      {finding.occurrences} occurrence{finding.occurrences !== 1 ? 's' : ''}
-                    </span>
                   </div>
                   <Badge variant="secondary" className="capitalize">
-                    {finding.severity} Risk
+                    {finding.risk_level} Risk
                   </Badge>
                 </div>
                 <p className="text-sm text-gray-700 mb-2">
-                  <strong>Context:</strong> "{finding.context}"
+                  <strong>AI Justification:</strong> {finding.justification}
                 </p>
                 <p className="text-sm text-blue-700">
                   <strong>Suggestion:</strong> {finding.suggestion}
@@ -274,10 +281,10 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <TrendingUp className="w-5 h-5" />
-            <span>Compliance Recommendations</span>
+            <span>🌱 AI Recommendations</span>
           </CardTitle>
           <CardDescription>
-            Actions to improve compliance and reduce greenwashing risk
+            Actionable steps to improve compliance
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -295,7 +302,7 @@ const GreenwashingAnalyzer = ({ content }: GreenwashingAnalyzerProps) => {
       {/* Action Buttons */}
       <div className="flex justify-center space-x-4">
         <Button onClick={analyzeContent} variant="outline">
-          Re-analyze Content
+          🌱 Re-analyze with AI
         </Button>
         <Button onClick={() => window.print()}>
           Export Report

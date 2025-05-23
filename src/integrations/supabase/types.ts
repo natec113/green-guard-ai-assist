@@ -9,7 +9,139 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      document_chunks: {
+        Row: {
+          content: string
+          created_at: string | null
+          document_id: string
+          embedding_hash: string | null
+          id: string
+          metadata: Json
+          public_read: boolean | null
+          user_id: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          document_id: string
+          embedding_hash?: string | null
+          id?: string
+          metadata?: Json
+          public_read?: boolean | null
+          user_id?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          document_id?: string
+          embedding_hash?: string | null
+          id?: string
+          metadata?: Json
+          public_read?: boolean | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_chunks_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_metadata: {
+        Row: {
+          created_at: string | null
+          document_id: string
+          id: string
+          key: string
+          value: string
+        }
+        Insert: {
+          created_at?: string | null
+          document_id: string
+          id?: string
+          key: string
+          value: string
+        }
+        Update: {
+          created_at?: string | null
+          document_id?: string
+          id?: string
+          key?: string
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_metadata_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      documents: {
+        Row: {
+          content: string
+          created_at: string | null
+          doc_id: string
+          id: string
+          metadata: Json
+          name: string
+          public_read: boolean | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          doc_id: string
+          id?: string
+          metadata?: Json
+          name: string
+          public_read?: boolean | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          doc_id?: string
+          id?: string
+          metadata?: Json
+          name?: string
+          public_read?: boolean | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      greenwashing_detections: {
+        Row: {
+          created_at: string | null
+          detection_result: Json
+          id: string
+          text_content: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          detection_result: Json
+          id?: string
+          text_content: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          detection_result?: Json
+          id?: string
+          text_content?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
