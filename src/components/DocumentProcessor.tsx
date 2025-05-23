@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Upload, FileText, CheckCircle, AlertCircle, FileUp, FileDown } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import { supabase } from "@/integrations/supabase/client";
 
 const DocumentProcessor = () => {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -100,27 +100,22 @@ const DocumentProcessor = () => {
     setProcessingResult(null);
     
     try {
-      const response = await fetch('https://fdaltcvpncdfocktnokn.supabase.co/functions/v1/process-document', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
+      const { data, error } = await supabase.functions.invoke('process-document', {
+        body: { 
           content: textContent,
           filename: filename || 'manual_input.txt'
-        }),
+        },
       });
 
-      if (!response.ok) {
-        throw new Error(`Failed to process document: ${response.statusText}`);
+      if (error) {
+        throw new Error(`Failed to process document: ${error.message}`);
       }
 
-      const result = await response.json();
-      setProcessingResult(result);
+      setProcessingResult(data);
       
       toast({
         title: "🌱 Document processed successfully!",
-        description: `P&G Annual Report updated with ${result.chunks_created} content chunks`,
+        description: `P&G Annual Report updated with ${data.chunks_created} content chunks`,
       });
     } catch (error) {
       console.error('Processing error:', error);
